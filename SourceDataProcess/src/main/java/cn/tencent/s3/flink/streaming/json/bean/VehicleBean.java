@@ -1,4 +1,4 @@
-package cn.tencent.s3.flink.json.bean;
+package cn.tencent.s3.flink.streaming.json.bean;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

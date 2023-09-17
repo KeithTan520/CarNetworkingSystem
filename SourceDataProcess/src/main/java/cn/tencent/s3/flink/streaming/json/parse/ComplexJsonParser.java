@@ -1,6 +1,6 @@
-package cn.tencent.s3.flink.json.parse;
+package cn.tencent.s3.flink.streaming.json.parse;
 
-import cn.tencent.s3.flink.json.bean.ComplexVehicleBean;
+import cn.tencent.s3.flink.streaming.json.bean.ComplexVehicleBean;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
