@@ -1,16 +1,20 @@
-package cn.tencent.s3.flink.streaming.utils;
+package cn.tencent.s3.flink.streaming.task;
 
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
-import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.api.java.utils.ParameterTool;
-import org.apache.flink.runtime.io.network.api.serialization.RecordDeserializer;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.state.filesystem.FsStateBackend;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.streaming.api.functions.sink.filesystem.OutputFileConfig;
+import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink;
+import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.DateTimeBucketAssigner;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaDeserializationSchemaWrapper;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,7 +85,7 @@ public class BaseTask {
         //todo 5.2 配置参数
         Properties props = new Properties();
         props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,parameterTool.get("bootstrap.servers"));
-        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG,parameterTool.get("kafka.topic"));
+        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG,parameterTool.get("group.id"));
         props.setProperty(KEY_PARTITION_DISCOVERY_INTERVAL_MILLIS,10*60*1000 + "");
         //todo 5.1 设置 FlinkKafkaConsumer
             FlinkKafkaConsumer<T> consumer = null;
@@ -102,5 +106,28 @@ public class BaseTask {
         return consumer;
     }
 
+    public static SinkFunction<String> sinkHDFS(String prefix,String suffix,String path) {
+        StreamingFileSink fileSink = StreamingFileSink.forRowFormat(
+                        new Path(parameterTool.getRequired("hdfsUri") + parameterTool.getRequired(path)),
+                        new SimpleStringEncoder()
+                )
+                //todo 设置桶策略 yyyyMMdd
+                .withBucketAssigner(new DateTimeBucketAssigner<String>("yyyyMMdd"))
+                //todo 滚筒策略 多长时间、多大分成文件 pending
+                .withRollingPolicy(DefaultRollingPolicy.builder()
+                        .withMaxPartSize(100 * 1024 * 1024)
+                        .withInactivityInterval(20000)
+                        //最大的写入时间
+                        .withRolloverInterval(10000)
+                        .build()
+                )
+                //todo 文件的前缀后缀
+                .withOutputFileConfig(
+                        new OutputFileConfig(
+                                prefix, suffix
+                        )
+                ).build();
+        return fileSink;
+    }
 
 }

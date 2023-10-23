@@ -1,19 +1,18 @@
 package cn.tencent.s3.flink.streaming.task;
 
 import cn.tencent.s3.flink.streaming.entity.CarDataObj;
-import cn.tencent.s3.flink.streaming.utils.BaseTask;
+import cn.tencent.s3.flink.streaming.sink.DetailToHBaseOptimizeSink;
 import cn.tencent.s3.flink.streaming.utils.JsonParseUtil;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.Properties;
-
-import static cn.tencent.s3.flink.streaming.utils.BaseTask.getKafkaConsumer;
-import static org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumerBase.KEY_PARTITION_DISCOVERY_INTERVAL_MILLIS;
+import static cn.tencent.s3.flink.streaming.task.BaseTask.getKafkaConsumer;
+import static cn.tencent.s3.flink.streaming.task.BaseTask.sinkHDFS;
 
 /**
  * 文件名：KafkaSourceDataTask
@@ -55,8 +54,11 @@ public class KafkaSourceDataTask {
         //todo 9.1 如果当前不为空，说明是错误的数据
         SingleOutputStreamOperator<CarDataObj> errorDataStream = vehicleData.filter(obj -> StringUtils.isNotEmpty(obj.getErrorData()));
         //todo 10 将正确的数据保存到 hdfs
+        //sourceDataStream.map(t->t.toHiveString()).addSink(sinkHDFS("src_",".txt","srcData"));
         //todo 11 将错误的数据保存到 hdfs 上
+        //errorDataStream.map(t->t.toHiveString()).addSink(sinkHDFS("error_",".txt","errorData"));
         //todo 12 将正确的数据写入到 hbase 中
+        sourceDataStream.addSink(new DetailToHBaseOptimizeSink("src_car"));
         //todo 13 执行流环境
         env.execute();
     }

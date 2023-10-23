@@ -217,6 +217,12 @@
             <artifactId>commons-beanutils</artifactId>
             <version>1.9.4</version>
         </dependency>
+         <!-- geodesy地址位置查询依赖 -->
+        <dependency>
+            <groupId>org.gavaghan</groupId>
+            <artifactId>geodesy</artifactId>
+            <version>${geodesy.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
