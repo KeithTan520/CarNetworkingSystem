@@ -10,13 +10,13 @@ import cn.tencent.s3.flink.streaming.sink.ElectricFenceMysqlSink;
 import cn.tencent.s3.flink.streaming.source.MysqlElectricFenceResultSource;
 import cn.tencent.s3.flink.streaming.source.MysqlElectricFenceSouce;
 import cn.tencent.s3.flink.streaming.utils.JsonParsePartUtil;
+import cn.tencent.s3.flink.streaming.watermark.ElectricFenceWatermark;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
@@ -52,36 +52,31 @@ public class ElectricFenceTask extends BaseTask {
         FlinkKafkaConsumer<String> consumer = getKafkaConsumer(SimpleStringSchema.class);
         //添加数据源
         DataStreamSource<String> kafkaSource = env.addSource(consumer);
-        kafkaSource.printToErr();
+        kafkaSource.printToErr("Kafka源数据>>>");
         //转换成对象，过滤出来正确数据
-        SingleOutputStreamOperator<CarDataPartObj> vehicleDataStream = kafkaSource.map(JsonParsePartUtil::parseJsonToObject)
+        SingleOutputStreamOperator<CarDataPartObj> vehicleDataStream = kafkaSource
+                .map(JsonParsePartUtil::parseJsonToObject)
                 .filter(carDataPartObj -> StringUtils.isEmpty(carDataPartObj.getErrorData()));
-        vehicleDataStream.printToErr();
+        vehicleDataStream.printToErr("车辆数据>>>");
         //5）读取电子围栏规则数据以及电子围栏规则关联的车辆数据并进行广播
         DataStreamSource<HashMap<String, ElectricFenceResultTmp>> electricFenceConfigStream = env.addSource(new MysqlElectricFenceSouce());
-        electricFenceConfigStream.printToErr();
         //将读取出来的数据广播出去
         DataStream<HashMap<String, ElectricFenceResultTmp>> broadcastStream = electricFenceConfigStream.broadcast();
-        broadcastStream.printToErr();
         //6）将原始数据（消费的kafka数据）与电子围栏规则数据进行关联操作（Connect）并flatMap为 ElectricFenceRulesFuntion
         SingleOutputStreamOperator<ElectricFenceModel> connectStream = vehicleDataStream
                 .connect(broadcastStream)
                 .flatMap(new ElectricFenceRulesFuntion());
+        connectStream.printToErr("车辆数据关联电子围栏规则后>>>");
         //7）对上步数据分配水印（30s）并根据 vin 分组后应用90s滚动窗口，然后对窗口进行自定义函数的开发（计算出来该窗口的数据属于电子围栏外还是电子围栏内）
-        KeyedStream<ElectricFenceModel, String> keyedStream = connectStream.assignTimestampsAndWatermarks(
-                new BoundedOutOfOrdernessTimestampExtractor<ElectricFenceModel>(Time.seconds(30)) {
-                    @Override
-                    public long extractTimestamp(ElectricFenceModel electricFenceModel) {
-                        return electricFenceModel.getTerminalTimestamp();
-                    }
-                }
-        ).keyBy(t -> t.getVin());
-        //划分窗口并处理数据
-        SingleOutputStreamOperator<ElectricFenceModel> windowStream = keyedStream
+        SingleOutputStreamOperator<ElectricFenceModel> windowStream = connectStream
+                .assignTimestampsAndWatermarks(new ElectricFenceWatermark())
+                .keyBy(ElectricFenceModel::getVin)
                 .window(TumblingEventTimeWindows.of(Time.seconds(90)))
                 .process(new ElectricFenceWindowFunction());
+        windowStream.printToErr("电子围栏结果>>>");
         //8）读取电子围栏分析结果表的数据并进行广播
         DataStream<HashMap<String,Long>> resultStream = env.addSource(new MysqlElectricFenceResultSource()).broadcast();
+        resultStream.printToErr("分析结果表>>>"+resultStream);
         //9）对第七步和第八步产生的数据进行关联操作（connect）
         //10）对第九步的结果进行滚动窗口操作，应用自定义窗口函数（实现添加uuid和inMysql属性赋值）
         SingleOutputStreamOperator<ElectricFenceModel> result = windowStream.connect(resultStream).flatMap(new ElectricFenceModelFunction());

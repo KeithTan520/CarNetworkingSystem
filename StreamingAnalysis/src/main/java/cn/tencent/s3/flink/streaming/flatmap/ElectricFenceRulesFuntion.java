@@ -6,6 +6,7 @@ import cn.tencent.s3.flink.streaming.entity.ElectricFenceResultTmp;
 import cn.tencent.s3.flink.streaming.utils.DateUtil;
 import cn.tencent.s3.flink.streaming.utils.DistanceCaculateUtil;
 import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
+import org.apache.flink.streaming.api.functions.co.RichCoFlatMapFunction;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +22,7 @@ import java.util.HashMap;
  * 创建时间：2023/10/19
  * 开发步骤：
  */
-public class ElectricFenceRulesFuntion implements CoFlatMapFunction<CarDataPartObj, HashMap<String, ElectricFenceResultTmp>, ElectricFenceModel> {
+public class ElectricFenceRulesFuntion extends RichCoFlatMapFunction<CarDataPartObj, HashMap<String, ElectricFenceResultTmp>, ElectricFenceModel> {
         //日志读取
     private static final Logger logger = LoggerFactory.getLogger(ElectricFenceRulesFuntion.class.getSimpleName());
         //定义变量用于接收配置数据
@@ -42,7 +43,7 @@ public class ElectricFenceRulesFuntion implements CoFlatMapFunction<CarDataPartO
             //2.1.获取当前车辆的 vin
             String vin = carDataPartObj.getVin();
             //2.2.通过vin获取电子围栏的配置信息
-            ElectricFenceResultTmp electricFenceResultTmp = electricFenceConfig.getOrDefault("vin", null);
+            ElectricFenceResultTmp electricFenceResultTmp = electricFenceConfig.getOrDefault(vin, null);
             //2.3.如果电子围栏配置信息不为空
             if (electricFenceResultTmp != null) {
                 //2.3.1.说明当前车辆关联了电子围栏规则，需要判断当前上报的数据是否在电子围栏规则的生效时间内，
@@ -86,12 +87,15 @@ public class ElectricFenceRulesFuntion implements CoFlatMapFunction<CarDataPartO
                     collector.collect(electricFenceModel);
                 }else {
                     logger.warn("当前电子围栏的配置时间已过期~");
+//                    System.out.println("当前电子围栏的配置时间已过期~");
                 }
             }else {
                 logger.warn("当前的上报车辆的电子围栏的配置信息为空，请检查~");
+//                System.out.println("当前的上报车辆的电子围栏的配置信息为空，请检查~");
             }
         }else {
             logger.error("当前上报的数据中gps时间为空或经度纬度无效");
+//            System.out.println("当前上报的数据中gps时间为空或经度纬度无效");
         }
     }
 
@@ -118,5 +122,6 @@ public class ElectricFenceRulesFuntion implements CoFlatMapFunction<CarDataPartO
     @Override
     public void flatMap2(HashMap<String, ElectricFenceResultTmp> value, Collector<ElectricFenceModel> out) throws Exception {
         electricFenceConfig = value;
+        System.out.println(electricFenceConfig.toString());
     }
 }
